@@ -5,14 +5,82 @@ namespace MementoTest.Core
 {
 	public partial class MapManager : TileMapLayer
 	{
+		// Variabel untuk Kursor Visual
+		private Line2D _highlightCursor;
+
 		public override void _Ready()
 		{
-			GD.Print("MapManager: Grid system initialized successfully.");
-			// Bersihkan tile hantu sebelum game mulai sepenuhnya
-			CleanInvalidTiles();
+			GD.Print("MapManager: Grid system initialized.");
 
-			GD.Print("MapManager: Ready and Cleaned.");
+			// --- FITUR BARU: Auto-Create Cursor ---
+			CreateHighlightCursor();
 		}
+
+		public override void _Process(double delta)
+		{
+			// --- FITUR BARU: Logic Kursor ---
+			UpdateCursorPosition();
+		}
+
+		private void CreateHighlightCursor()
+		{
+			// Membuat node Line2D secara coding (tanpa perlu add node di Scene)
+			_highlightCursor = new Line2D();
+			_highlightCursor.Width = 2.0f;           // Ketebalan garis
+			_highlightCursor.DefaultColor = new Color(1, 1, 0, 0.7f); // Warna Kuning Transparan
+			_highlightCursor.Closed = true;          // Agar garis nyambung jadi lingkaran/hex
+			_highlightCursor.ZIndex = 5;             // Pastikan di atas player/tanah
+
+			// Membuat bentuk Hexagon (Flat Top)
+			// Ukuran disesuaikan dengan Tile Size kamu (32x28)
+			// Kamu bisa ubah angka ini jika bentuknya kurang pas
+			float w = 14.0f; // Setengah lebar (agak dikurangi biar border ada di dalam)
+			float h = 12.0f; // Setengah tinggi
+			float m = 7.0f;  // Kemiringan sudut (untuk hex)
+
+			Vector2[] hexPoints = new Vector2[]
+			{
+				new Vector2(-m, -h), // Kiri Atas
+                new Vector2(m, -h),  // Kanan Atas
+                new Vector2(w, 0),   // Kanan Tengah
+                new Vector2(m, h),   // Kanan Bawah
+                new Vector2(-m, h),  // Kiri Bawah
+                new Vector2(-w, 0)   // Kiri Tengah
+            };
+
+			_highlightCursor.Points = hexPoints;
+			_highlightCursor.Visible = false; // Sembunyikan dulu
+
+			AddChild(_highlightCursor); // Masukkan ke dalam Scene
+		}
+
+		private void UpdateCursorPosition()
+		{
+			// Ambil posisi mouse
+			Vector2 mousePos = GetGlobalMousePosition();
+			Vector2I gridPos = GetGridCoordinates(mousePos);
+
+			// Validasi: Apakah tile ini valid/bisa diinjak?
+			// Kita gunakan IsTileWalkable yang sudah kita buat sebelumnya
+			bool isValid = IsTileWalkable(gridPos);
+
+			if (isValid)
+			{
+				_highlightCursor.Visible = true;
+
+				// PENTING: Pindahkan kursor ke tengah grid (Snapping)
+				// Kita gunakan fungsi GetSnappedWorldPosition yang sudah ada
+				Vector2 visualOffset = new Vector2(0, 7); 
+				_highlightCursor.Position = GetSnappedWorldPosition(mousePos) + visualOffset;
+			}
+			else
+			{
+				// Sembunyikan jika mouse keluar map atau di atas air
+				_highlightCursor.Visible = false;
+			}
+		}
+
+		// --- FUNGSI LAMA (JANGAN DIHAPUS) ---
 
 		public Vector2 GetSnappedWorldPosition(Vector2 worldPos)
 		{
@@ -25,114 +93,49 @@ namespace MementoTest.Core
 			return LocalToMap(ToLocal(worldPos));
 		}
 
-		// --- UPDATE PENTING DI SINI ---
 		public bool IsTileWalkable(Vector2I mapCoords)
 		{
-			// 1. SAFETY CHECK (Pencegah Crash):
-			// Cek apakah di koordinat ini benar-benar ada gambarnya?
-			// Jika SourceId == -1, berarti kosong/void. Jangan dilanjut, langsung return false.
-			if (GetCellSourceId(mapCoords) == -1)
-			{
-				return false;
-			}
+			if (GetCellSourceId(mapCoords) == -1) return false;
 
 			TileData data = GetCellTileData(mapCoords);
-
-			// 2. Double check jika data null
 			if (data == null) return false;
 
-			// 3. Ambil Custom Data
 			Variant walkable = data.GetCustomData("is_walkable");
-
-			// Cek tipe data sebelum konversi (Jaga-jaga jika lupa set di editor)
-			if (walkable.VariantType == Variant.Type.Nil) return true; // Default true jika lupa set
+			if (walkable.VariantType == Variant.Type.Nil) return true;
 
 			return walkable.AsBool();
 		}
 
-		// --- FITUR BARU: UNIT DETECTION ---
-		/// <summary>
-		/// Mengecek apakah ada Unit (Player/Enemy) yang sedang berdiri di tile ini.
-		/// Mencegah unit saling tumpang tindih.
-		/// </summary>
 		public bool IsTileOccupied(Vector2I targetGridCoords)
 		{
-			// Ambil semua node dalam grup "Units" (Player & Enemy wajib masuk grup ini)
-			// Atau cek grup "Player" dan "Enemy" terpisah
 			var enemies = GetTree().GetNodesInGroup("Enemy");
 			var players = GetTree().GetNodesInGroup("Player");
 
-			foreach (Node2D enemy in enemies)
+			foreach (Node2D entity in enemies)
 			{
-				// Asumsi Enemy punya script yang mengekspos properti GridPosition
-				// Tapi cara paling gampang: Cek posisi dunia yang sudah dikonversi
-				Vector2I enemyGrid = GetGridCoordinates(enemy.GlobalPosition);
-				if (enemyGrid == targetGridCoords) return true;
+				// Cek jarak aman karena posisi float tidak selalu persis sama
+				if (GetGridCoordinates(entity.GlobalPosition) == targetGridCoords) return true;
 			}
-
-			foreach (Node2D player in players)
+			foreach (Node2D entity in players)
 			{
-				Vector2I playerGrid = GetGridCoordinates(player.GlobalPosition);
-				if (playerGrid == targetGridCoords) return true;
+				if (GetGridCoordinates(entity.GlobalPosition) == targetGridCoords) return true;
 			}
-
 			return false;
 		}
 
 		public bool IsNeighbor(Vector2I currentCoords, Vector2I targetCoords)
 		{
 			if (currentCoords == targetCoords) return false;
-
 			TileSet.CellNeighbor[] neighbors = {
-				TileSet.CellNeighbor.TopSide,
-				TileSet.CellNeighbor.BottomSide,
-				TileSet.CellNeighbor.TopLeftSide,
-				TileSet.CellNeighbor.TopRightSide,
-				TileSet.CellNeighbor.BottomLeftSide,
-				TileSet.CellNeighbor.BottomRightSide
+				TileSet.CellNeighbor.TopSide, TileSet.CellNeighbor.BottomSide,
+				TileSet.CellNeighbor.TopLeftSide, TileSet.CellNeighbor.TopRightSide,
+				TileSet.CellNeighbor.BottomLeftSide, TileSet.CellNeighbor.BottomRightSide
 			};
-
 			foreach (var side in neighbors)
 			{
-				if (GetNeighborCell(currentCoords, side) == targetCoords)
-				{
-					return true;
-				}
+				if (GetNeighborCell(currentCoords, side) == targetCoords) return true;
 			}
 			return false;
-		}
-		private void CleanInvalidTiles()
-		{
-			var usedCells = GetUsedCells();
-			int errorCount = 0;
-
-			foreach (var cell in usedCells)
-			{
-				// Trik Debugging:
-				// Coba ambil data tile. Jika null atau source ID-nya aneh, hapus.
-				int sourceId = GetCellSourceId(cell);
-
-				// Ganti '0' dengan ID source atlas kamu (biasanya 0, 1, atau 2)
-				// Cek di panel TileSet > Source untuk melihat ID pastinya
-				if (sourceId == -1)
-				{
-					// Tile hantu (terdata di memori tapi tidak ada visualnya)
-					EraseCell(cell);
-					errorCount++;
-				}
-				else
-				{
-					// Cek apakah koordinat atlas valid
-					// Ini akan memicu error di output, tapi kita tangkap datanya
-					// Sayangnya Godot C# tidak punya "TryGetTileData", 
-					// jadi kita pastikan saja source ID valid.
-				}
-			}
-
-			if (errorCount > 0)
-			{
-				GD.Print($"[AUTO-FIX] Removed {errorCount} invalid/ghost tiles.");
-			}
 		}
 	}
 }

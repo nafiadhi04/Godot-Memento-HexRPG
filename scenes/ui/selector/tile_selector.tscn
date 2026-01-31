@@ -1,0 +1,10 @@
+[gd_scene format=3 uid="uid://drbvjh7pbk6k7"]
+
+[ext_resource type="Texture2D" uid="uid://cll72i6un8kbr" path="res://assets/ui/selector/GridSelector.png" id="1_r3c0m"]
+
+[node name="TileSelector" type="Node2D" unique_id=2025738061]
+z_index = 1
+position = Vector2(0, 10)
+
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=523572564]
+texture = ExtResource("1_r3c0m")
