@@ -1,0 +1,20 @@
+[gd_scene format=3 uid="uid://d1rokv21p7rhx"]
+
+[ext_resource type="Script" uid="uid://w7r8srqg76ep" path="res://scripts/entities/enemy/EnemyController.cs" id="1_essrt"]
+[ext_resource type="Texture2D" uid="uid://dx0d13km0gwbb" path="res://icon.svg" id="1_yfmsl"]
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_essrt"]
+height = 120.0
+
+[node name="Enemy" type="CharacterBody2D" unique_id=584458365 groups=["EnemyGroup"]]
+scale = Vector2(0.1, 0.1)
+script = ExtResource("1_essrt")
+
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=630790635]
+modulate = Color(1, 0.3, 0.3, 1)
+texture = ExtResource("1_yfmsl")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1318861657]
+position = Vector2(1.4210855e-13, 49.999996)
+rotation = 1.5707964
+shape = SubResource("CapsuleShape2D_essrt")

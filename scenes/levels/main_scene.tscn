@@ -1,0 +1,16 @@
+[gd_scene format=3 uid="uid://dy0qtiis24i8l"]
+
+[ext_resource type="PackedScene" uid="uid://c0wgpf30k3hu4" path="res://scenes/entities/player/player.tscn" id="1_6312j"]
+[ext_resource type="PackedScene" uid="uid://70nlbfro38uw" path="res://scenes/environtments/map_manager.tscn" id="2_ybdc1"]
+[ext_resource type="PackedScene" uid="uid://d1rokv21p7rhx" path="res://scenes/entities/enemies/enemy.tscn" id="3_3ulyp"]
+
+[node name="Main Scene" type="Node2D" unique_id=1483603412]
+
+[node name="Player" parent="." unique_id=1206653042 instance=ExtResource("1_6312j")]
+position = Vector2(110.000015, 114.00001)
+ActionPoints = 100
+
+[node name="MapManager" parent="." unique_id=1877811624 instance=ExtResource("2_ybdc1")]
+
+[node name="Enemy" parent="." unique_id=584458365 instance=ExtResource("3_3ulyp")]
+position = Vector2(328, 148)
