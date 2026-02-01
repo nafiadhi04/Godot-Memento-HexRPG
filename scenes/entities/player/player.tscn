@@ -18,6 +18,7 @@ script = ExtResource("1_635qg")
 MaxAP = 100
 SkillList = Array[Object]([ExtResource("2_nh4ur")])
 DamagePopupScene = ExtResource("3_bjvvg")
+TurnStartBaseRegen = 0
 
 [node name="Sprite2D" type="Sprite2D" parent="." unique_id=279064122]
 position = Vector2(0, 60)

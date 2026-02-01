@@ -15,6 +15,8 @@ namespace MementoTest.Entities
 		[Export] public int TypoPenaltyAP = 2;
 		[Export] public Godot.Collections.Array<PlayerSkill> SkillList;
 		[Export] public PackedScene DamagePopupScene;
+		[Export] public int SuccessRegenAP = 3; // Berapa AP yang didapat kalau sukses ngetik
+		[Export] public int TurnStartBaseRegen = 1; // Modal AP tiap ganti giliran (biar gak macet total)
 
 
 		private int _currentHP;
@@ -134,23 +136,26 @@ namespace MementoTest.Entities
 		}
 		private void OnPlayerTurnStart()
 		{
-			_currentAP = MaxAP;
-			if (_hud != null) _hud.UpdateAP(_currentAP, MaxAP);
+			// [GANTI DENGAN LOGIKA BARU]
+			// 1. Tambah sedikit modal (Base Regen)
+			_currentAP += TurnStartBaseRegen;
 
-			// Log info
-			if (_hud != null) _hud.LogToTerminal("--- SYSTEM REBOOTED. AP RESTORED. ---", Colors.Cyan);
+			// 2. Pastikan tidak melebihi batas MaxAP
+			if (_currentAP > MaxAP) _currentAP = MaxAP;
 
+			// 3. Update UI
+			if (_hud != null)
+			{
+				_hud.UpdateAP(_currentAP, MaxAP);
+				// Beri tahu player status AP-nya
+				_hud.LogToTerminal($"--- SYSTEM REBOOTED. AP +{TurnStartBaseRegen} ---", Colors.Cyan);
+			}
+
+			// ... (Logika Auto-Reconnect target musuh tetap sama) ...
 			if (_targetEnemy != null && GodotObject.IsInstanceValid(_targetEnemy))
 			{
-				// Buka Panel Combat Otomatis
 				_hud.ShowCombatPanel(true);
-				_hud.LogToTerminal($"> AUTO-RECONNECT: {_targetEnemy.Name}", Colors.Yellow);
-				_hud.LogToTerminal("> READY FOR INPUT...", Colors.White);
-			}
-			else
-			{
-				// Kalau musuh sudah mati saat giliran musuh (misal kena counter attack), reset.
-				_targetEnemy = null;
+				// ...
 			}
 		}
 
@@ -215,8 +220,16 @@ namespace MementoTest.Entities
 
 				if (_currentAP >= apCost)
 				{
-					// ... (Logic AP SAMA) ...
+					_currentAP -= apCost;
+
+					_currentAP += SuccessRegenAP;
+					if (_currentAP > MaxAP) _currentAP = MaxAP;
+
+					// 2. [WAJIB ADA] Update UI agar bar AP berubah
+					if (_hud != null) _hud.UpdateAP(_currentAP, MaxAP);
+
 					_hud.LogToTerminal($"> EXECUTING '{command}'...", Colors.Green);
+
 
 					// [FIX 1] Matikan animasi jalan/gerak sebelumnya jika ada
 					if (_activeTween != null && _activeTween.IsValid())

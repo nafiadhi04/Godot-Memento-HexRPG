@@ -3,7 +3,6 @@
 [ext_resource type="Script" uid="uid://bxlpg5p3bgwqo" path="res://scripts/ui/DamagePopup.cs" id="1_gufe0"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_hjrak"]
-font_size = 24
 font_color = Color(1, 0.5, 0.5, 1)
 outline_size = 4
 outline_color = Color(0, 0, 0, 1)

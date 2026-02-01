@@ -12,7 +12,7 @@
 position = Vector2(111.99999, 98)
 
 [node name="Enemy" parent="." unique_id=584458365 instance=ExtResource("3_3ulyp")]
-position = Vector2(329, 141)
+position = Vector2(145.00002, 97)
 
 [node name="MapManager" parent="." unique_id=475127524 instance=ExtResource("2_ybdc1")]
 
