@@ -26,6 +26,7 @@ namespace MementoTest.Entities
 		private Vector2I _currentGridPos;
 		private bool _isMoving = false;
 		private Random _rng = new Random();
+		private ProgressBar _healthBar;
 
 		private readonly TileSet.CellNeighbor[] _hexNeighbors = {
 			TileSet.CellNeighbor.TopSide,
@@ -38,9 +39,17 @@ namespace MementoTest.Entities
 
 		public override void _Ready()
 		{
-			_currentHP = MaxHP;
 			base._Ready(); // Panggil base ready yang lama
 			_currentHP = MaxHP;
+
+			_healthBar = GetNodeOrNull<ProgressBar>("HealthBar");
+
+			if (_healthBar != null)
+			{
+				_healthBar.MaxValue = MaxHP;
+				_healthBar.Value = _currentHP;
+				_healthBar.Visible = true; // Munculkan bar
+			} 
 			if (GetParent().HasNode("MapManager"))
 			{
 				_mapManager = GetParent().GetNode<MapManager>("MapManager");
@@ -179,13 +188,19 @@ namespace MementoTest.Entities
 		public void TakeDamage(int damage)
 		{
 			_currentHP -= damage;
+
+			if (_healthBar != null)
+			{
+				_healthBar.Value = _currentHP;
+			}
+
 			ShowDamagePopup(damage);
 			Modulate = Colors.Red;
 			CreateTween().TweenProperty(this, "modulate", Colors.White, 0.2f);
 
 			if (_currentHP <= 0)
 			{
-				QueueFree();
+				Die();
 			}
 		}
 
@@ -207,6 +222,46 @@ namespace MementoTest.Entities
 				// 4. Jalankan animasi (Posisi muncul di atas kepala sedikit)
 				popup.SetupAndAnimate(amount, GlobalPosition + new Vector2(0, -30), color);
 			}
+		}
+
+		private async void Die()
+		{
+			GD.Print($"ENEMY DEFEATED: {Name}");
+
+			// 1. Matikan Interaksi (PENTING)
+			// Supaya player tidak bisa klik musuh ini lagi saat animasi mati berjalan
+			// Kita matikan CollisionShape-nya
+			var collision = GetNodeOrNull<CollisionShape2D>("CollisionShape2D");
+			if (collision != null)
+			{
+				collision.SetDeferred("disabled", true);
+			}
+
+			// Sembunyikan Health Bar biar rapi
+			if (_healthBar != null) _healthBar.Visible = false;
+
+			// 2. Animasi Kematian (Juicy!)
+			Tween tween = CreateTween();
+			tween.SetParallel(true); // Jalankan animasi secara bersamaan
+
+			// Fade Out (Transparan)
+			tween.TweenProperty(this, "modulate:a", 0f, 0.5f)
+				.SetTrans(Tween.TransitionType.Expo)
+				.SetEase(Tween.EaseType.Out);
+
+			// Shrink (Mengecil sampai hilang)
+			tween.TweenProperty(this, "scale", Vector2.Zero, 0.5f)
+				.SetTrans(Tween.TransitionType.Back)
+				.SetEase(Tween.EaseType.In);
+
+			// Putar sedikit (opsional, biar dramatis)
+			tween.TweenProperty(this, "rotation_degrees", 360f, 0.5f);
+
+			// Tunggu animasi selesai
+			await ToSignal(tween, "finished");
+
+			// 3. Hapus Object dari Memory
+			QueueFree();
 		}
 	}
 }

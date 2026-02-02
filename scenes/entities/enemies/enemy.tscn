@@ -4,6 +4,7 @@
 [ext_resource type="Texture2D" uid="uid://dx0d13km0gwbb" path="res://icon.svg" id="1_yfmsl"]
 [ext_resource type="Resource" uid="uid://b5gbtl5hk1yxv" path="res://resources/commands/enemymovelist/headbutt.tres" id="2_c8ylr"]
 [ext_resource type="PackedScene" uid="uid://fae5gohr724t" path="res://scenes/ui/damage_popup.tscn" id="3_pm80n"]
+[ext_resource type="PackedScene" uid="uid://cxuxljpyebawn" path="res://scenes/ui/enemy_health_bar.tscn" id="5_gflvi"]
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_essrt"]
 height = 119.999985
@@ -25,3 +26,9 @@ position = Vector2(8.526506e-14, 89.99999)
 rotation = 1.5707964
 scale = Vector2(3, 1)
 shape = SubResource("CapsuleShape2D_essrt")
+
+[node name="HealthBar" parent="." unique_id=75040711 instance=ExtResource("5_gflvi")]
+offset_left = -70.0
+offset_top = -60.0
+offset_right = 80.0
+offset_bottom = -33.0
