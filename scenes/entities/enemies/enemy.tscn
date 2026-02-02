@@ -15,6 +15,8 @@ scale = Vector2(0.1, 0.1)
 script = ExtResource("1_essrt")
 SkillList = Array[Object]([ExtResource("2_c8ylr")])
 DamagePopupScene = ExtResource("3_pm80n")
+ReactionTimeMelee = 5.0
+ReactionTimeRanged = 5.0
 
 [node name="Sprite2D" type="Sprite2D" parent="." unique_id=630790635]
 modulate = Color(1, 0.3, 0.3, 1)
@@ -28,7 +30,7 @@ scale = Vector2(3, 1)
 shape = SubResource("CapsuleShape2D_essrt")
 
 [node name="HealthBar" parent="." unique_id=75040711 instance=ExtResource("5_gflvi")]
-offset_left = -70.0
-offset_top = -60.0
-offset_right = 80.0
-offset_bottom = -33.0
+offset_left = 89.999985
+offset_top = 119.999985
+offset_right = 239.99998
+offset_bottom = 146.99998

@@ -16,6 +16,10 @@ namespace MementoTest.Entities
 		[Export] public int MaxHP = 50;
 		[Export] public Godot.Collections.Array<EnemySkill> SkillList;
 		[Export] public PackedScene DamagePopupScene;
+
+		[ExportGroup("Combat Settings")] // Opsional: Biar rapi di Inspector
+		[Export] public float ReactionTimeMelee = 1.5f; // Waktu untuk Parry (Jarak Dekat)
+		[Export] public float ReactionTimeRanged = 2.0f;
 		private int _currentHP;
 		private PlayerController _targetPlayer;
 
@@ -27,6 +31,8 @@ namespace MementoTest.Entities
 		private bool _isMoving = false;
 		private Random _rng = new Random();
 		private ProgressBar _healthBar;
+
+		private MementoTest.UI.BattleHUD _hud;
 
 		private readonly TileSet.CellNeighbor[] _hexNeighbors = {
 			TileSet.CellNeighbor.TopSide,
@@ -66,6 +72,11 @@ namespace MementoTest.Entities
 			if (GetParent().HasNode("Player"))
 			{
 				_targetPlayer = GetParent().GetNode<PlayerController>("Player");
+			}
+
+			if (GetParent().HasNode("BattleHUD"))
+			{
+				_hud = GetParent().GetNode<MementoTest.UI.BattleHUD>("BattleHUD");
 			}
 		}
 
@@ -161,28 +172,91 @@ namespace MementoTest.Entities
 				// (Nanti di sini kita masukkan logika Move/Jalan mendekat)
 				await ToSignal(GetTree().CreateTimer(0.5f), "timeout");
 			}
+
+			
 		}
 
-			private async Task PerformSkill(EnemySkill skill)
+		private async Task PerformSkill(EnemySkill skill)
 		{
 			GD.Print($"{Name} menggunakan [{skill.SkillName}]!");
 
-			// 1. Animasi Maju-Mundur (Visual Effect)
+			// --- SETUP POSISI ---
 			Vector2 originalPos = GlobalPosition;
 			Vector2 direction = originalPos.DirectionTo(_targetPlayer.GlobalPosition);
 
-			// Kalau jarak dekat (melee), maju agak jauh. Kalau range, maju dikit aja.
-			float lungeDistance = (skill.AttackRange < 150) ? 30f : 10f;
+			// Tentukan jarak ancang-ancang
+			float lungeDistance = (skill.AttackRange < 150) ? 40f : 15f;
 			Vector2 attackPos = originalPos + (direction * lungeDistance);
 
-			Tween tween = CreateTween();
-			tween.TweenProperty(this, "global_position", attackPos, 0.1f).SetTrans(Tween.TransitionType.Back);
-			tween.TweenProperty(this, "global_position", originalPos, 0.2f);
+			// --- PHASE 1: ANCAMAN (Maju Cepat) ---
+			Tween attackTween = CreateTween();
+			attackTween.TweenProperty(this, "global_position", attackPos, 0.2f)
+					.SetTrans(Tween.TransitionType.Back)
+					.SetEase(Tween.EaseType.Out);
 
-			await ToSignal(tween, "finished");
+			// Tunggu sampai musuh berada di posisi "mengancam" (depan muka player)
+			await ToSignal(attackTween, "finished");
 
-			// 2. Deal Damage sesuai Skill yang dipilih
-			_targetPlayer.TakeDamage(skill.Damage);
+			// --- PHASE 2: REAKSI PLAYER (Stop Waktu) ---
+			bool isDodged = false;
+
+			if (_hud != null)
+			{
+				string reactionWord;
+				float chosenTime;
+
+				// LOGIKA BARU: Pilih kata & waktu berdasarkan jarak
+				if (skill.AttackRange < 150)
+				{
+					// Jarak Dekat (Melee)
+					reactionWord = "parry";
+					chosenTime = ReactionTimeMelee; // Ambil dari Inspector
+				}
+				else
+				{
+					// Jarak Jauh (Ranged)
+					reactionWord = "dodge";
+					chosenTime = ReactionTimeRanged; // Ambil dari Inspector
+				}
+
+				GD.Print($"[ENEMY] Meminta reaksi '{reactionWord}' selama {chosenTime} detik...");
+
+				// Panggil fungsi di BattleHUD dan tunggu hasilnya
+				isDodged = await _hud.WaitForPlayerReaction(reactionWord, chosenTime);
+			}
+
+			GD.Print($"[ENEMY DEBUG] Is Dodged? {isDodged}");
+
+			// --- PHASE 3: EKSEKUSI DAMAGE ---
+			if (isDodged)
+			{
+				// SUKSES: Player selamat!
+				GD.Print(">>> REACTION SUCCESS! DAMAGE NULLIFIED.");
+
+				// Kirim damage 0 agar muncul popup "0" atau "MISS"
+				_targetPlayer.TakeDamage(0);
+			}
+			else
+			{
+				// GAGAL: Player kena pukul
+				GD.Print(">>> REACTION FAILED! TAKING DAMAGE.");
+
+				// Beri efek getar sedikit (Shake) biar kerasa sakit
+				Tween shake = CreateTween();
+				shake.TweenProperty(this, "position", attackPos + new Vector2(5, 0), 0.05f);
+				shake.TweenProperty(this, "position", attackPos - new Vector2(5, 0), 0.05f);
+				await ToSignal(shake, "finished");
+
+				_targetPlayer.TakeDamage(skill.Damage);
+			}
+
+			// --- PHASE 4: MUNDUR (Return) ---
+			Tween returnTween = CreateTween();
+			returnTween.TweenProperty(this, "global_position", originalPos, 0.2f)
+					.SetTrans(Tween.TransitionType.Quad)
+					.SetEase(Tween.EaseType.Out);
+
+			await ToSignal(returnTween, "finished");
 		}
 
 		public void TakeDamage(int damage)
@@ -217,7 +291,7 @@ namespace MementoTest.Entities
 
 				// 3. Tentukan warna (Misal: Player kena hit = Merah, Musuh kena hit = Putih/Kuning)
 				// Logika sederhana: Kalau ini script Player, warnanya Merah.
-				Color color = (this is PlayerController) ? Colors.Red : Colors.Yellow;
+				Color color = Colors.Yellow;
 
 				// 4. Jalankan animasi (Posisi muncul di atas kepala sedikit)
 				popup.SetupAndAnimate(amount, GlobalPosition + new Vector2(0, -30), color);

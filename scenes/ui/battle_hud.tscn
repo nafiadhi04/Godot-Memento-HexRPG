@@ -2,13 +2,45 @@
 
 [ext_resource type="Script" uid="uid://dfdn7hnohdxr6" path="res://scripts/ui/BattleHUD.cs" id="1_dy3po"]
 
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_dy3po"]
+bg_color = Color(1.0102807, 1.0102807, 0, 1)
+
 [sub_resource type="LabelSettings" id="LabelSettings_dy3po"]
 font_size = 32
 outline_size = 4
 outline_color = Color(0, 0, 0, 1)
 
-[node name="BattleHUD" type="CanvasLayer" unique_id=682286073]
+[node name="BattleHUD" type="CanvasLayer" unique_id=682286073 node_paths=PackedStringArray("ReactionPanel", "ReactionPromptLabel", "ReactionTimerBar")]
 script = ExtResource("1_dy3po")
+ReactionPanel = NodePath("ReactionPanel")
+ReactionPromptLabel = NodePath("ReactionPanel/VboxContainer/ReactionPromptLabel")
+ReactionTimerBar = NodePath("ReactionPanel/VboxContainer/ReactionTimerBar")
+
+[node name="ReactionPanel" type="PanelContainer" parent="." unique_id=1441546504]
+visible = false
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -28.5
+offset_top = -20.0
+offset_right = 28.5
+offset_bottom = 20.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VboxContainer" type="VBoxContainer" parent="ReactionPanel" unique_id=1921342737]
+layout_mode = 2
+
+[node name="ReactionTimerBar" type="ProgressBar" parent="ReactionPanel/VboxContainer" unique_id=1055452086]
+layout_mode = 2
+theme_override_styles/fill = SubResource("StyleBoxFlat_dy3po")
+show_percentage = false
+
+[node name="ReactionPromptLabel" type="Label" parent="ReactionPanel/VboxContainer" unique_id=2018491589]
+layout_mode = 2
+text = "DODGE"
 
 [node name="Control" type="Control" parent="." unique_id=886510616]
 layout_mode = 3
