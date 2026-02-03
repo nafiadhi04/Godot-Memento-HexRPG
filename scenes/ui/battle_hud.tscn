@@ -38,18 +38,17 @@ font_size = 32
 outline_size = 4
 outline_color = Color(0, 0, 0, 1)
 
-[node name="BattleHUD" type="CanvasLayer" unique_id=682286073 node_paths=PackedStringArray("ScoreLabel", "ComboLabel", "ReactionPanel", "ReactionPromptLabel", "ReactionTimerBar", "PlayerHPBar", "PlayerAPBar")]
+[node name="BattleHUD" type="CanvasLayer" unique_id=682286073 node_paths=PackedStringArray("ReactionPanel", "ReactionPromptLabel", "ReactionTimerBar", "PlayerHPBar", "PlayerAPBar", "ScoreLabel", "ComboLabel") groups=["HUD"]]
 script = ExtResource("1_dy3po")
-ScoreLabel = NodePath("ScoreLabel")
-ComboLabel = NodePath("ComboLabel")
 ReactionPanel = NodePath("ReactionPanel")
 ReactionPromptLabel = NodePath("ReactionPanel/VboxContainer/ReactionPromptLabel")
 ReactionTimerBar = NodePath("ReactionPanel/VboxContainer/ReactionTimerBar")
 PlayerHPBar = NodePath("Control/HPBar")
 PlayerAPBar = NodePath("Control/APBar")
+ScoreLabel = NodePath("ScoreLabel")
+ComboLabel = NodePath("ComboLabel")
 
 [node name="ReactionPanel" type="PanelContainer" parent="." unique_id=1441546504]
-visible = false
 anchors_preset = 8
 anchor_left = 0.5
 anchor_top = 0.5

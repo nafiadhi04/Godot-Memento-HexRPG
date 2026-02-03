@@ -10,82 +10,62 @@ namespace MementoTest.UI
 		// --- SIGNALS ---
 		[Signal] public delegate void CommandSubmittedEventHandler(string commandText);
 		[Signal] public delegate void EndTurnRequestedEventHandler();
-		// (Signal ReactionEnded dihapus karena kita ganti pakai Task yang lebih canggih)
 
-		[Export] public Label ScoreLabel;
-		[Export] public Label ComboLabel;
-
-		// --- EXPORT UI ---
+		// --- EXPORT VARIABLES ---
+		[ExportGroup("Reaction UI")]
 		[Export] public Control ReactionPanel;
 		[Export] public Label ReactionPromptLabel;
 		[Export] public ProgressBar ReactionTimerBar;
 
+		[ExportGroup("Player Stats")]
+		[Export] public ProgressBar PlayerHPBar;
+		[Export] public ProgressBar PlayerAPBar;
+		[Export] public Label HPLabel;
 
-	// --- [BARU] PLAYER STATS BARS ---
-        [Export] public ProgressBar PlayerHPBar;
-        [Export] public ProgressBar PlayerAPBar;
-		[Export] public Label HPLabel; 
-		
+		[ExportGroup("Scoring UI")]
+		[Export] public Label ScoreLabel;
+		[Export] public Label ComboLabel;
+
 		// --- INTERNAL ---
 		private bool _isReactionPhase = false;
 		private string _expectedReactionWord = "";
 
-		//  Wadah untuk menunggu hasil input player
+		// [ANTI MACET] Gunakan ini daripada ToSignal
 		private TaskCompletionSource<bool> _reactionTaskSource;
+		private Tween _timerTween;
 
-		private Control _combatPanel;
-		private LineEdit _commandInput;
-		private RichTextLabel _combatLog;
-		private Label _apLabel;
 		private Button _endTurnBtn;
+		private Label _turnLabel; // Variabel yang tadi error
+		private Control _combatPanel;
+		private Label _apLabel;
+		private RichTextLabel _combatLog;
+		private LineEdit _commandInput;
 
 		public override void _Ready()
 		{
 			if (ReactionPanel != null) ReactionPanel.Visible = false;
 
 			_endTurnBtn = GetNodeOrNull<Button>("Control/EndTurnBtn");
+			_turnLabel = GetNodeOrNull<Label>("Control/TurnLabel");
+
 			if (_endTurnBtn != null)
+			{
 				_endTurnBtn.Pressed += () => EmitSignal(SignalName.EndTurnRequested);
+				_endTurnBtn.FocusMode = Control.FocusModeEnum.None; // Tombol jangan curi fokus
+			}
 
 			SetupCombatUI();
 
 			if (PlayerHPBar != null) PlayerHPBar.Value = PlayerHPBar.MaxValue;
 			if (PlayerAPBar != null) PlayerAPBar.Value = PlayerAPBar.MaxValue;
+
+			// Dummy task agar tidak null di awal
+			_reactionTaskSource = new TaskCompletionSource<bool>();
+			_reactionTaskSource.TrySetResult(false);
+
 			CallDeferred("ConnectToScoreManager");
-		}
-		private void ConnectToScoreManager()
-		{
-			if (ScoreManager.Instance != null)
-			{
-				ScoreManager.Instance.ScoreUpdated += OnScoreUpdated;
-				ScoreManager.Instance.ComboUpdated += OnComboUpdated;
+			_commandInput.FocusMode = Control.FocusModeEnum.All;
 
-				// Reset tampilan awal
-				OnScoreUpdated(0);
-				OnComboUpdated(0);
-			}
-		}
-
-		private void OnScoreUpdated(int newScore)
-		{
-			if (ScoreLabel != null) ScoreLabel.Text = $"SCORE: {newScore:N0}"; // N0 biar ada titik (1.000)
-		}
-
-		private void OnComboUpdated(int newCombo)
-		{
-			if (ComboLabel != null)
-			{
-				ComboLabel.Text = $"COMBO: x{newCombo}";
-
-				// Efek visual sederhana: Warna berubah kalau combo tinggi
-				if (newCombo > 5) ComboLabel.Modulate = Colors.Yellow;
-				else ComboLabel.Modulate = Colors.White;
-
-				// Animasi kecil (Punch)
-				var tween = CreateTween();
-				ComboLabel.Scale = new Vector2(1.5f, 1.5f);
-				tween.TweenProperty(ComboLabel, "scale", Vector2.One, 0.2f);
-			}
 		}
 
 		private void SetupCombatUI()
@@ -95,99 +75,118 @@ namespace MementoTest.UI
 				_combatPanel = GetNode<Control>("Control/CombatPanel");
 				_combatLog = _combatPanel.GetNodeOrNull<RichTextLabel>("VBoxContainer/CombatLog");
 				_commandInput = _combatPanel.GetNodeOrNull<LineEdit>("VBoxContainer/CommandInput");
-
-				// Cari AP Label (Flexible Path)
 				_apLabel = _combatPanel.GetNodeOrNull<Label>("VBoxContainer/APLabel");
+
 				if (_apLabel == null) _apLabel = _combatPanel.GetNodeOrNull<Label>("APLabel");
 
 				if (_commandInput != null)
 				{
-					// Pastikan tidak double connect signal
 					if (!_commandInput.IsConnected("text_submitted", new Callable(this, MethodName.OnCommandEntered)))
 						_commandInput.TextSubmitted += OnCommandEntered;
 				}
-
 				_combatPanel.Visible = false;
 			}
 		}
 
-		public override void _Process(double delta)
+		private void ConnectToScoreManager()
 		{
-			// Logika Timer & Fokus saat Fase Reaksi
-			if (_isReactionPhase && ReactionPanel.Visible)
+			if (ScoreManager.Instance != null)
 			{
-				// Paksa Fokus ke Input agar player bisa langsung ketik
-				if (_commandInput != null && !_commandInput.HasFocus())
-					_commandInput.GrabFocus();
-
-				// Hitung Mundur Waktu
-				if (ReactionTimerBar != null)
-				{
-					ReactionTimerBar.Value -= delta;
-					if (ReactionTimerBar.Value <= 0)
-					{
-						FailReaction("TIMEOUT");
-					}
-				}
+				ScoreManager.Instance.ScoreUpdated += OnScoreUpdated;
+				ScoreManager.Instance.ComboUpdated += OnComboUpdated;
+				OnScoreUpdated(0);
+				OnComboUpdated(0);
 			}
 		}
 
-		// --- FUNGSI UTAMA (DIPANGGIL MUSUH) ---
+		// --- FUNGSI UTAMA: REACTION SYSTEM (ANTI-DEADLOCK) ---
 		public async Task<bool> WaitForPlayerReaction(string commandWord, float duration)
 		{
 			// 1. Reset State
 			_isReactionPhase = true;
 			_expectedReactionWord = commandWord.ToLower();
-
-			// [FIX] Buat Task baru untuk ditunggu
 			_reactionTaskSource = new TaskCompletionSource<bool>();
 
-			// 2. Tampilkan UI
+			// 2. Setup UI
 			ShowCombatPanel(true);
+
 			if (ReactionPanel != null)
 			{
 				ReactionPanel.Visible = true;
-				if (ReactionPromptLabel != null) ReactionPromptLabel.Text = $"TYPE: {commandWord.ToUpper()}!";
+				if (ReactionPromptLabel != null)
+					ReactionPromptLabel.Text = $"TYPE: {commandWord.ToUpper()}!";
+
 				if (ReactionTimerBar != null)
 				{
 					ReactionTimerBar.MaxValue = duration;
 					ReactionTimerBar.Value = duration;
+
+					if (_timerTween != null && _timerTween.IsValid())
+						_timerTween.Kill();
+
+					_timerTween = CreateTween();
+					_timerTween.TweenProperty(
+						ReactionTimerBar,
+						"value",
+						0,
+						duration
+					).SetTrans(Tween.TransitionType.Linear);
+
+					_timerTween.TweenCallback(
+						Callable.From(() => FailReaction("TIMEOUT"))
+					);
 				}
 			}
 
-			// Bersihkan Input & Fokus
+			// 3. Fokus Input (AWAL)
 			if (_commandInput != null)
 			{
 				_commandInput.Clear();
 				_commandInput.GrabFocus();
 			}
 
-			GD.Print($"[HUD] WAITING INPUT: '{commandWord}'");
+			GD.Print($"[HUD] WAITING INPUT: '{commandWord}' ({duration}s)");
 
-			// 3. TUNGGU DI SINI SAMPAI ADA HASIL (Anti-Deadlock)
-			// Script akan pause di baris ini sampai _reactionTaskSource di-isi nilainya
+			// 4. TUNGGU HASIL
+			// 4. TUNGGU HASIL
 			bool result = await _reactionTaskSource.Task;
 
-			// 4. Selesai -> Bersihkan UI
+			// 🔥 FIX FINAL: FORCE RESET GUI FOCUS
+			await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+
+			GetViewport().GuiReleaseFocus();
+
+			// CallDeferred = dieksekusi SETELAH UI stabil
+			_commandInput?.CallDeferred(Control.MethodName.GrabFocus);
+
+			// 5. Cleanup
 			_isReactionPhase = false;
-			if (ReactionPanel != null) ReactionPanel.Visible = false;
-			if (_commandInput != null) _commandInput.Clear();
+
+			if (_timerTween != null && _timerTween.IsValid())
+				_timerTween.Kill();
+
+			if (ReactionPanel != null)
+				ReactionPanel.Visible = false;
+
+			if (_commandInput != null)
+				_commandInput.Clear();
 
 			return result;
 		}
+
 
 		// --- INPUT HANDLER ---
 		private void OnCommandEntered(string text)
 		{
 			string cleanText = text.Trim().ToLower();
 
-			// Skenario 1: Fase Reaksi (Dodge/Parry)
+			// KASUS 1: FASE REAKSI (DODGE/PARRY)
 			if (_isReactionPhase)
 			{
 				if (cleanText == _expectedReactionWord)
 				{
 					LogToTerminal(">>> PERFECT DEFENSE!", Colors.Cyan);
-					_reactionTaskSource.TrySetResult(true); // Kirim SUKSES ke Musuh
+					ResolveReaction(true);
 				}
 				else
 				{
@@ -195,103 +194,40 @@ namespace MementoTest.UI
 				}
 
 				if (_commandInput != null) _commandInput.Clear();
-				return; // Stop, jangan proses sebagai command attack
+				return;
 			}
 
-			// Skenario 2: Giliran Player Normal
+			// KASUS 2: GILIRAN PLAYER BIASA
 			EmitSignal(SignalName.CommandSubmitted, cleanText);
 			if (_commandInput != null) _commandInput.Clear();
+		}
+
+		private void ResolveReaction(bool success)
+		{
+			if (!_isReactionPhase) return;
+			if (_reactionTaskSource != null && !_reactionTaskSource.Task.IsCompleted)
+			{
+				_reactionTaskSource.TrySetResult(success);
+			}
 		}
 
 		private void FailReaction(string reason)
 		{
 			if (_isReactionPhase)
 			{
-				GD.Print($"[HUD] FAILED: {reason}");
-				_reactionTaskSource.TrySetResult(false); // Kirim GAGAL ke Musuh
-				_isReactionPhase = false;
+				GD.Print($"[HUD] REACTION FAILED: {reason}");
+				ResolveReaction(false);
 			}
 		}
 
-		// --- Helper Methods ---
-		public void ShowCombatPanel(bool show)
+		// --- ENABLE PLAYER INPUT (Supaya bisa ngetik lagi setelah Parry) ---
+		public void EnablePlayerInput()
 		{
-			if (_combatPanel != null)
-			{
-				_combatPanel.Visible = show;
-				if (show && _commandInput != null) _commandInput.GrabFocus();
-			}
-		}
-		public void LogToTerminal(string message, Color color)
-		{
-			if (_combatLog != null)
-			{
-				string hexColor = color.ToHtml();
-				_combatLog.AppendText($"[color=#{hexColor}]{message}[/color]\n");
-			}
-			else
-			{
-				// Fallback jika UI Log belum siap
-				GD.Print($"[LOG] {message}");
-			}
-		}
+			// Matikan sisa-sisa fase reaksi musuh
+			_isReactionPhase = false;
+			if (_timerTween != null && _timerTween.IsValid()) _timerTween.Kill();
+			if (_reactionTaskSource != null && !_reactionTaskSource.Task.IsCompleted) _reactionTaskSource.TrySetResult(false);
 
-		private void GrabFocusDeferred()
-		{
-			if (_commandInput != null) _commandInput.GrabFocus();
-		}
-
-		public void SetEndTurnButtonInteractable(bool interactable)
-		{
-			if (_endTurnBtn != null) _endTurnBtn.Disabled = !interactable;
-		}
-		public void UpdateTurnLabel(string text) { } // Implementasi label jika ada
-		public void UpdateAP(int current, int max)
-		{
-			// 1. Update Text Label (Cara Lama)
-			if (_apLabel != null) _apLabel.Text = $"AP: {current}/{max}";
-
-			// 2. [BARU] Update Progress Bar dengan Animasi
-			if (PlayerAPBar != null)
-			{
-				PlayerAPBar.MaxValue = max;
-
-				// Buat Tween agar bar turun/naik perlahan
-				var tween = CreateTween();
-				tween.TweenProperty(PlayerAPBar, "value", current, 0.3f)
-					.SetTrans(Tween.TransitionType.Sine)
-					.SetEase(Tween.EaseType.Out);
-			}
-		}
-
-		public void UpdateHP(int current, int max)
-		{
-			// Update Text (Opsional)
-			if (HPLabel != null) HPLabel.Text = $"{current}/{max}";
-
-			// Update Progress Bar dengan Animasi
-			if (PlayerHPBar != null)
-			{
-				PlayerHPBar.MaxValue = max;
-
-				var tween = CreateTween();
-				tween.TweenProperty(PlayerHPBar, "value", current, 0.3f)
-					.SetTrans(Tween.TransitionType.Quint) // Efek hentakan sedikit
-					.SetEase(Tween.EaseType.Out);
-
-				// Ubah warna bar jadi merah gelap jika HP kritis (< 20%)
-				if ((float)current / max < 0.2f)
-				{
-					PlayerHPBar.Modulate = Colors.Red;
-				}
-				else
-				{
-					PlayerHPBar.Modulate = Colors.White; // Reset warna normal
-				}
-			}
-		}
-		public async void EnablePlayerInput()
-		{
 			if (_combatPanel != null)
 			{
 				_combatPanel.Visible = true;
@@ -301,22 +237,79 @@ namespace MementoTest.UI
 					_commandInput.Editable = true;
 					_commandInput.Clear();
 
-					// 1. Tunggu 1 frame agar Godot selesai merender perubahan UI turn sebelumnya
-					await ToSignal(GetTree(), "process_frame");
-
-					// 2. NUCLEAR RESET: Lepaskan fokus dulu (biar tidak bingung)
-					_commandInput.ReleaseFocus();
-
-					// 3. Ambil Fokus
+					// Langsung fokus (Tanpa await process_frame agar tidak ada delay input)
 					_commandInput.GrabFocus();
-
-					// 4. Pastikan kursor ada di posisi siap ketik
 					_commandInput.CaretColumn = 0;
-
-					// Debug: Pastikan fokus benar-benar diambil
-					GD.Print($"[HUD] Input Focus FORCED. Owner: {GetViewport().GuiGetFocusOwner()?.Name}");
 				}
 			}
 		}
+
+		// --- Helper Methods ---
+		public override void _Process(double delta)
+		{
+			// Paksa fokus hanya saat fase reaksi
+			if (_isReactionPhase && ReactionPanel.Visible && _commandInput != null && !_commandInput.HasFocus())
+			{
+				_commandInput.GrabFocus();
+			}
+		}
+
+		public void ShowCombatPanel(bool show)
+		{
+			if (_combatPanel != null)
+			{
+				_combatPanel.Visible = show;
+				if (show && _commandInput != null) _commandInput.GrabFocus();
+			}
+		}
+
+		public void LogToTerminal(string message, Color color)
+		{
+			if (_combatLog != null)
+			{
+				string hexColor = color.ToHtml();
+				_combatLog.AppendText($"[color=#{hexColor}]{message}[/color]\n");
+			}
+		}
+
+		// Update Stats Wrappers
+		private void OnScoreUpdated(int newScore) { if (ScoreLabel != null) ScoreLabel.Text = $"SCORE: {newScore:N0}"; }
+		private void OnComboUpdated(int newCombo)
+		{
+			if (ComboLabel != null)
+			{
+				ComboLabel.Text = $"COMBO: x{newCombo}";
+				if (newCombo > 0)
+				{
+					var t = CreateTween();
+					ComboLabel.Scale = new Vector2(1.5f, 1.5f);
+					t.TweenProperty(ComboLabel, "scale", Vector2.One, 0.2f);
+				}
+			}
+		}
+
+		public void UpdateHP(int current, int max)
+		{
+			if (HPLabel != null) HPLabel.Text = $"{current}/{max}";
+			if (PlayerHPBar != null)
+			{
+				PlayerHPBar.MaxValue = max;
+				CreateTween().TweenProperty(PlayerHPBar, "value", current, 0.3f).SetTrans(Tween.TransitionType.Quint).SetEase(Tween.EaseType.Out);
+				PlayerHPBar.Modulate = ((float)current / max < 0.2f) ? Colors.Red : Colors.White;
+			}
+		}
+
+		public void UpdateAP(int current, int max)
+		{
+			if (_apLabel != null) _apLabel.Text = $"AP: {current}/{max}";
+			if (PlayerAPBar != null)
+			{
+				PlayerAPBar.MaxValue = max;
+				CreateTween().TweenProperty(PlayerAPBar, "value", current, 0.3f).SetTrans(Tween.TransitionType.Sine).SetEase(Tween.EaseType.Out);
+			}
+		}
+
+		public void SetEndTurnButtonInteractable(bool interactable) { if (_endTurnBtn != null) _endTurnBtn.Disabled = !interactable; }
+		public void UpdateTurnLabel(string text) { if (_turnLabel != null) _turnLabel.Text = text; }
 	}
 }
