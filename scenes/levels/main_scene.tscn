@@ -30,6 +30,7 @@ position = Vector2(398.99997, 55.000004)
 script = ExtResource("4_q46b8")
 
 [node name="LockedAreas" type="Node2D" parent="." unique_id=742438019]
+visible = false
 
 [node name="Area2Fog" parent="LockedAreas" unique_id=42898743 instance=ExtResource("6_fiowe")]
 z_index = 20

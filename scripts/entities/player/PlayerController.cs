@@ -334,6 +334,8 @@ namespace MementoTest.Entities
 			_currentHP -= damage;
 			ShowDamagePopup(damage);
 
+			_hud?.UpdateHP(_currentHP, MaxHP);
+
 			// Efek Merah
 			Modulate = Colors.Red;
 			CreateTween().TweenProperty(this, "modulate", Colors.White, 0.3f);

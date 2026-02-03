@@ -16,11 +16,17 @@ namespace MementoTest.UI
 		[Export] public Label ReactionPromptLabel;
 		[Export] public ProgressBar ReactionTimerBar;
 
+
+	// --- [BARU] PLAYER STATS BARS ---
+        [Export] public ProgressBar PlayerHPBar;
+        [Export] public ProgressBar PlayerAPBar;
+		[Export] public Label HPLabel; 
+		
 		// --- INTERNAL ---
 		private bool _isReactionPhase = false;
 		private string _expectedReactionWord = "";
 
-		// [KUNCI ANTI MACET] Wadah untuk menunggu hasil input player
+		//  Wadah untuk menunggu hasil input player
 		private TaskCompletionSource<bool> _reactionTaskSource;
 
 		private Control _combatPanel;
@@ -38,6 +44,9 @@ namespace MementoTest.UI
 				_endTurnBtn.Pressed += () => EmitSignal(SignalName.EndTurnRequested);
 
 			SetupCombatUI();
+
+			if (PlayerHPBar != null) PlayerHPBar.Value = PlayerHPBar.MaxValue;
+			if (PlayerAPBar != null) PlayerAPBar.Value = PlayerAPBar.MaxValue;
 		}
 
 		private void SetupCombatUI()
@@ -174,6 +183,19 @@ namespace MementoTest.UI
 				if (show && _commandInput != null) _commandInput.GrabFocus();
 			}
 		}
+		public void LogToTerminal(string message, Color color)
+		{
+			if (_combatLog != null)
+			{
+				string hexColor = color.ToHtml();
+				_combatLog.AppendText($"[color=#{hexColor}]{message}[/color]\n");
+			}
+			else
+			{
+				// Fallback jika UI Log belum siap
+				GD.Print($"[LOG] {message}");
+			}
+		}
 
 		private void GrabFocusDeferred()
 		{
@@ -187,13 +209,48 @@ namespace MementoTest.UI
 		public void UpdateTurnLabel(string text) { } // Implementasi label jika ada
 		public void UpdateAP(int current, int max)
 		{
+			// 1. Update Text Label (Cara Lama)
 			if (_apLabel != null) _apLabel.Text = $"AP: {current}/{max}";
-		}
-		public void LogToTerminal(string message, Color color)
-		{
-			if (_combatLog != null) _combatLog.AppendText($"[color={color.ToHtml()}]{message}[/color]\n");
+
+			// 2. [BARU] Update Progress Bar dengan Animasi
+			if (PlayerAPBar != null)
+			{
+				PlayerAPBar.MaxValue = max;
+
+				// Buat Tween agar bar turun/naik perlahan
+				var tween = CreateTween();
+				tween.TweenProperty(PlayerAPBar, "value", current, 0.3f)
+					.SetTrans(Tween.TransitionType.Sine)
+					.SetEase(Tween.EaseType.Out);
+			}
 		}
 
+		public void UpdateHP(int current, int max)
+		{
+			// Update Text (Opsional)
+			if (HPLabel != null) HPLabel.Text = $"{current}/{max}";
+
+			// Update Progress Bar dengan Animasi
+			if (PlayerHPBar != null)
+			{
+				PlayerHPBar.MaxValue = max;
+
+				var tween = CreateTween();
+				tween.TweenProperty(PlayerHPBar, "value", current, 0.3f)
+					.SetTrans(Tween.TransitionType.Quint) // Efek hentakan sedikit
+					.SetEase(Tween.EaseType.Out);
+
+				// Ubah warna bar jadi merah gelap jika HP kritis (< 20%)
+				if ((float)current / max < 0.2f)
+				{
+					PlayerHPBar.Modulate = Colors.Red;
+				}
+				else
+				{
+					PlayerHPBar.Modulate = Colors.White; // Reset warna normal
+				}
+			}
+		}
 		public async void EnablePlayerInput()
 		{
 			if (_combatPanel != null)
