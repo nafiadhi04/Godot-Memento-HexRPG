@@ -2,22 +2,9 @@
 
 [ext_resource type="Script" uid="uid://w7r8srqg76ep" path="res://scripts/entities/enemy/EnemyController.cs" id="1_essrt"]
 [ext_resource type="Texture2D" uid="uid://dx0d13km0gwbb" path="res://icon.svg" id="1_yfmsl"]
-[ext_resource type="Script" uid="uid://o501np5g5vub" path="res://scripts/core/battle/EnemySkill.cs" id="2_gflvi"]
+[ext_resource type="Resource" uid="uid://b5gbtl5hk1yxv" path="res://resources/commands/enemymovelist/headbutt.tres" id="2_c8ylr"]
 [ext_resource type="PackedScene" uid="uid://fae5gohr724t" path="res://scenes/ui/damage_popup.tscn" id="3_pm80n"]
 [ext_resource type="PackedScene" uid="uid://cxuxljpyebawn" path="res://scenes/ui/enemy_health_bar.tscn" id="5_gflvi"]
-
-[sub_resource type="Resource" id="Resource_20lqd"]
-script = ExtResource("2_gflvi")
-SkillName = "Slash"
-Damage = 15
-AttackRange = 70.0
-metadata/_custom_type_script = "uid://o501np5g5vub"
-
-[sub_resource type="Resource" id="Resource_j3iiu"]
-script = ExtResource("2_gflvi")
-SkillName = "Shoot"
-AttackRange = 300.0
-metadata/_custom_type_script = "uid://o501np5g5vub"
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_essrt"]
 height = 119.999985
@@ -26,7 +13,7 @@ height = 119.999985
 z_index = 10
 scale = Vector2(0.1, 0.1)
 script = ExtResource("1_essrt")
-SkillList = Array[Object]([SubResource("Resource_20lqd"), SubResource("Resource_j3iiu")])
+SkillList = Array[Object]([ExtResource("2_c8ylr")])
 DamagePopupScene = ExtResource("3_pm80n")
 ReactionTimeMelee = 5.0
 ReactionTimeRanged = 5.0
