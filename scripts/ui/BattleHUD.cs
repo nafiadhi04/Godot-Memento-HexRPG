@@ -2,6 +2,8 @@ using Godot;
 using System;
 using System.Threading.Tasks;
 using MementoTest.Core;
+using System.Collections.Generic;
+using MementoTest.Resources;
 
 namespace MementoTest.UI
 {
@@ -18,22 +20,31 @@ namespace MementoTest.UI
 		[Export] public Label ScoreLabel;
 		[Export] public Label ComboLabel;
 
+		// =============================
+		// PLAYER COMMAND DATA
+		// =============================
+		private HashSet<string> _availableCommands = new HashSet<string>();
+
 		// --- EXPORT UI ---
 		[Export] public Control ReactionPanel;
 		[Export] public Label ReactionPromptLabel;
 		[Export] public ProgressBar ReactionTimerBar;
+		
 
 
-	// --- [BARU] PLAYER STATS BARS ---
-        [Export] public ProgressBar PlayerHPBar;
-        [Export] public ProgressBar PlayerAPBar;
+		// --- [BARU] PLAYER STATS BARS ---
+		[Export] public ProgressBar PlayerHPBar;
+		[Export] public ProgressBar PlayerAPBar;
 		[Export] public Label HPLabel;
 
-		// --- INTERNAL ---
-		private bool _isReactionPhase;
-		public bool IsBusy { get; private set; }
+		// --- INTERNAL ---// =============================
+		// INPUT STATE
+		// =============================
+		private bool _isPlayerCommandPhase = false;   // giliran player ngetik command attack
+		private bool _isReactionPhase = false;        // parry / dodge
+		private string _expectedCommand = "";         // command attack yang valid
+		private string _expectedReactionWord = "";    // parry / dodge
 
-		private string _expectedReactionWord = "";
 
 		//  Wadah untuk menunggu hasil input player
 		private TaskCompletionSource<bool> _reactionTaskSource;
@@ -46,31 +57,57 @@ namespace MementoTest.UI
 		private Label _apLabel;
 		private Button _endTurnBtn;
 		private TaskCompletionSource<bool> _reactionTcs;
-		private bool _isWaitingReaction = false;
+		private bool _isWaitingReaction;
 		private double _reactionStartTime;
 		public float LastReactionTime { get; private set; }
 
 		private string _expectedWord = "";
 		private bool _reactionActive = false;
+		public bool IsBusy { get; private set; }
+
 
 
 
 		public override void _Ready()
 		{
-			if (ReactionPanel != null) ReactionPanel.Visible = false;
+			if (ReactionPanel != null)
+				ReactionPanel.Visible = false;
 
 			_endTurnBtn = GetNodeOrNull<Button>("Control/EndTurnBtn");
 			if (_endTurnBtn != null)
 				_endTurnBtn.Pressed += () => EmitSignal(SignalName.EndTurnRequested);
 
+			if (PlayerHPBar != null)
+			{
+				PlayerHPBar.MaxValue = PlayerHPBar.MaxValue;
+				PlayerHPBar.Value = PlayerHPBar.MaxValue;
+				PlayerHPBar.Modulate = Colors.White;
+			}
+
+			if (PlayerAPBar != null)
+			{
+				PlayerAPBar.Value = PlayerAPBar.MaxValue;
+			}
+
 			SetupCombatUI();
 
-			if (PlayerHPBar != null) PlayerHPBar.Value = PlayerHPBar.MaxValue;
-			if (PlayerAPBar != null) PlayerAPBar.Value = PlayerAPBar.MaxValue;
-			CallDeferred("ConnectToScoreManager");
-			_commandInput.TextChanged += OnCommandInputTextChanged;
+			_commandInput = GetNode<LineEdit>(
+				"Control/CombatPanel/VBoxContainer/CommandInput"
 
+				
+			);
+
+			//  CONNECT SEKALI 
+			_commandInput.TextSubmitted += OnCommandEntered;
+			_commandInput.TextChanged += OnCommandInputChanged;
+
+			// Optional safety
+			_commandInput.Editable = true;
+			_commandInput.MouseFilter = Control.MouseFilterEnum.Stop;
+
+			GD.Print("[HUD] BattleHUD Ready - Input connected ONCE");
 		}
+
 		private void ConnectToScoreManager()
 		{
 			if (ScoreManager.Instance != null)
@@ -108,25 +145,16 @@ namespace MementoTest.UI
 
 		private void SetupCombatUI()
 		{
-			if (HasNode("Control/CombatPanel"))
-			{
-				_combatPanel = GetNode<Control>("Control/CombatPanel");
-				_combatLog = _combatPanel.GetNodeOrNull<RichTextLabel>("VBoxContainer/CombatLog");
-				_commandInput = _combatPanel.GetNodeOrNull<LineEdit>("VBoxContainer/CommandInput");
+			if (!HasNode("Control/CombatPanel")) return;
 
-				// Cari AP Label (Flexible Path)
-				_apLabel = _combatPanel.GetNodeOrNull<Label>("VBoxContainer/APLabel");
-				if (_apLabel == null) _apLabel = _combatPanel.GetNodeOrNull<Label>("APLabel");
+			_combatPanel = GetNode<Control>("Control/CombatPanel");
+			_combatLog = _combatPanel.GetNodeOrNull<RichTextLabel>("VBoxContainer/CombatLog");
+			_commandInput = _combatPanel.GetNodeOrNull<LineEdit>("VBoxContainer/CommandInput");
 
-				if (_commandInput != null)
-				{
-					// Pastikan tidak double connect signal
-					if (!_commandInput.IsConnected("text_submitted", new Callable(this, MethodName.OnCommandEntered)))
-						_commandInput.TextSubmitted += OnCommandEntered;
-				}
+			_apLabel = _combatPanel.GetNodeOrNull<Label>("VBoxContainer/APLabel")
+					?? _combatPanel.GetNodeOrNull<Label>("APLabel");
 
-				_combatPanel.Visible = false;
-			}
+			_combatPanel.Visible = false;
 		}
 
 		public override void _Process(double delta)
@@ -166,12 +194,20 @@ namespace MementoTest.UI
 			if (_timerTween != null && _timerTween.IsValid())
 				_timerTween.Kill();
 
-			// =============================
-			// 2. INIT STATE
-			// =============================
 			_isReactionPhase = true;
 			_expectedReactionWord = expectedWord.ToLower();
+
 			_reactionStartTime = Time.GetUnixTimeFromSystem();
+
+			_commandInput.Clear();
+			_commandInput.Modulate = Colors.White;
+			_commandInput.Editable = true;
+			_commandInput.Visible = true;
+
+			// tunggu 1 frame supaya UI siap
+			await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+
+			_commandInput.GrabFocus();
 
 			// =============================
 			// 3. SETUP UI
@@ -183,6 +219,7 @@ namespace MementoTest.UI
 				GD.PrintErr("[HUD] ReactionPanel NULL!");
 				return false;
 			}
+			_reactionTcs = new TaskCompletionSource<bool>();
 
 			ReactionPanel.Visible = true;
 
@@ -242,6 +279,7 @@ namespace MementoTest.UI
 			// 6. CLEANUP (FINAL & CONSISTENT)
 			// =============================
 			_isReactionPhase = false;
+			_commandInput.Modulate = Colors.White;
 
 			if (_timerTween != null && _timerTween.IsValid())
 				_timerTween.Kill();
@@ -265,7 +303,10 @@ namespace MementoTest.UI
 		}
 
 
+
+
 		// --- INPUT HANDLER ---
+
 		private void OnCommandEntered(string text)
 		{
 			string cleanText = text.Trim().ToLower();
@@ -299,9 +340,10 @@ namespace MementoTest.UI
 		}
 
 
-		private void OnCommandInputTextChanged(string newText)
+		private void OnCommandInputChanged(string newText)
 		{
-			if (!_isReactionPhase) return;
+			if (!_reactionActive)
+				return;
 
 			if (string.IsNullOrEmpty(newText))
 			{
@@ -309,41 +351,149 @@ namespace MementoTest.UI
 				return;
 			}
 
-			string expected = _expectedReactionWord;
+			newText = newText.ToLower();
 
-			for (int i = 0; i < newText.Length; i++)
+			// =========================
+			// REACTION MODE (parry/dodge)
+			// =========================
+			if (_isReactionPhase)
 			{
-				if (i >= expected.Length || newText[i] != expected[i])
+				bool valid = _expectedReactionWord.StartsWith(newText);
+				_commandInput.Modulate = valid ? Colors.LimeGreen : Colors.IndianRed;
+				return;
+			}
+
+			// =========================
+			// ATTACK MODE
+			// =========================
+			bool anyMatch = false;
+
+			foreach (var cmd in _availableCommands)
+			{
+				if (cmd.StartsWith(newText))
+				{
+					anyMatch = true;
+					break;
+				}
+			}
+
+			_commandInput.Modulate = anyMatch ? Colors.LimeGreen : Colors.IndianRed;
+		}
+
+
+		private void UpdateTypingColor(string input, string expected)
+		{
+			if (string.IsNullOrEmpty(input))
+			{
+				_commandInput.Modulate = Colors.White;
+				return;
+			}
+
+			for (int i = 0; i < input.Length; i++)
+			{
+				if (i >= expected.Length || input[i] != expected[i])
 				{
 					_commandInput.Modulate = Colors.IndianRed;
 					return;
 				}
 			}
 
-			// sejauh ini benar
 			_commandInput.Modulate = Colors.LimeGreen;
 		}
 
 
 		private void FailReaction(string reason)
 		{
-			if (!_isReactionPhase) return;
+			if (!_isReactionPhase)
+				return;
 
 			GD.Print($"[HUD] REACTION FAILED: {reason}");
 
-			_isReactionPhase = false;
+			if (!_reactionTaskSource.Task.IsCompleted)
+				_reactionTaskSource.SetResult(false);
 
-			if (_reactionTaskSource != null && !_reactionTaskSource.Task.IsCompleted)
-			{
-				_reactionTaskSource.TrySetResult(false);
-			}
+			_isReactionPhase = false;
 
 			if (ReactionPromptLabel != null)
 				ReactionPromptLabel.Text = "FAILED!";
 
-			if (_commandInput != null)
-				_commandInput.Modulate = Colors.IndianRed;
+			_commandInput.Modulate = Colors.Red;
 		}
+
+		public void SetAvailableCommands(IEnumerable<PlayerSkill> skills)
+		{
+			_availableCommands.Clear();
+
+			foreach (var skill in skills)
+			{
+				_availableCommands.Add(skill.CommandName.ToLower());
+			}
+
+			GD.Print($"[HUD] Available Commands: {string.Join(", ", _availableCommands)}");
+		}
+
+
+		public async void asEnterPlayerCommandPhase(IEnumerable<string> commands)
+		{
+			if (_commandInput == null)
+			{
+				GD.PrintErr("[HUD] CommandInput is NULL in EnterPlayerCommandPhase");
+				return;
+			}
+
+			_isPlayerCommandPhase = true;
+			_isReactionPhase = false;
+
+			_availableCommands = new HashSet<string>(commands);
+
+			_commandInput.Visible = true;
+			_commandInput.Editable = true;
+			_commandInput.Clear();
+			_commandInput.Modulate = Colors.White;
+
+			await ToSignal(GetTree(), "process_frame");
+			_commandInput.GrabFocus();
+
+			GD.Print("[HUD] Player command phase started");
+		}
+
+
+		private void FocusCommandInput()
+		{
+			_commandInput.GrabFocus();
+		}
+		private bool IsValidCommand(string command)
+		{
+			return _availableCommands.Contains(command);
+		}
+
+		public void EnterPlayerCommandPhase(IEnumerable<string> commands)
+		{
+			_isPlayerCommandPhase = true;
+			_isReactionPhase = false;
+			_reactionActive = true;
+
+			_availableCommands.Clear();
+			foreach (var cmd in commands)
+				_availableCommands.Add(cmd.ToLower());
+
+			_expectedWord = ""; // attack = banyak command valid
+
+			_commandInput.Clear();
+			_commandInput.Modulate = Colors.White;
+			_commandInput.Editable = true;
+			_commandInput.Visible = true;
+			_commandInput.GrabFocus();
+
+			GD.Print("[HUD] Player command phase started");
+		}
+
+		public void ExitPlayerCommandPhase()
+		{
+			_isPlayerCommandPhase = false;
+			_commandInput.ReleaseFocus();
+		}
+
 
 
 		// --- Helper Methods ---
@@ -426,11 +576,16 @@ namespace MementoTest.UI
 
 		private void CompleteReaction(bool success)
 		{
+			if (_reactionTcs == null) return;
+
 			if (!_reactionTcs.Task.IsCompleted)
 			{
 				_reactionTcs.SetResult(success);
 			}
+
+			_isWaitingReaction = false;
 		}
+
 
 		private void ForceCancelReaction()
 		{
@@ -440,9 +595,10 @@ namespace MementoTest.UI
 			}
 
 			_isWaitingReaction = false;
-			_commandInput.Text = "";
+			_commandInput.Clear();
 			_commandInput.ReleaseFocus();
 		}
+
 
 
 		public async void EnablePlayerInput()

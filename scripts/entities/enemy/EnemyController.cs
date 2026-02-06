@@ -305,12 +305,10 @@ namespace MementoTest.Entities
 			if (_isAttacking) return;
 			_isAttacking = true;
 
-			GD.Print($"[AI] Performing skill: {skill.SkillName}");
-
 			Vector2 startPos = GlobalPosition;
 			Vector2 dir = startPos.DirectionTo(_targetPlayer.GlobalPosition);
 
-			Tween t = CreateTween();
+			var t = CreateTween();
 			t.TweenProperty(this, "global_position", startPos + dir * 30f, 0.2f);
 			await ToSignal(t, "finished");
 
@@ -323,40 +321,31 @@ namespace MementoTest.Entities
 				float time = melee ? ReactionTimeMelee : ReactionTimeRanged;
 
 				success = await _hud.WaitForPlayerReaction(word, time);
-
 			}
 
-			if (success)
-				_targetPlayer.TakeDamage(0);
-			else
-				_targetPlayer.TakeDamage(skill.Damage);
+			// 🔥 SATU-SATUNYA DAMAGE CALL
+			int finalDamage = success ? 0 : skill.Damage;
+			_targetPlayer.TakeDamage(finalDamage);
 
-			if (!success)
-				_targetPlayer.TakeDamage(skill.Damage);
-
-			Tween back = CreateTween();
+			var back = CreateTween();
 			back.TweenProperty(this, "global_position", startPos, 0.2f);
 			await ToSignal(back, "finished");
 
-			if (success)
+			if (success && SpeedBonusProfile != null && _hud != null)
 			{
-				_targetPlayer.TakeDamage(0);
+				float reactionTime = _hud.LastReactionTime;
+				int bonus = SpeedBonusProfile.CalculateBonus(reactionTime);
 
-				if (SpeedBonusProfile != null && _hud != null)
+				if (bonus > 0)
 				{
-					float reactionTime = _hud.LastReactionTime;
-					int bonus = SpeedBonusProfile.CalculateBonus(reactionTime);
-
-					if (bonus > 0)
-					{
-						ScoreManager.Instance?.AddScore(bonus);
-						GD.Print($"[SPEED BONUS] +{bonus} ({reactionTime:0.00}s)");
-					}
+					ScoreManager.Instance?.AddScore(bonus);
+					GD.Print($"[SPEED BONUS] +{bonus} ({reactionTime:0.00}s)");
 				}
 			}
 
 			_isAttacking = false;
 		}
+
 		/* =======================
 		 * MOVEMENT
 		 * ======================= */

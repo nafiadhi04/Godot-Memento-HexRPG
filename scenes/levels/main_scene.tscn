@@ -29,14 +29,6 @@ metadata/_custom_type_script = "uid://ddqwc7dhlg7n3"
 script = ExtResource("11_df41j")
 metadata/_custom_type_script = "uid://b6mw2ys38apry"
 
-[sub_resource type="Resource" id="Resource_6u8e5"]
-script = ExtResource("10_p61ap")
-metadata/_custom_type_script = "uid://ddqwc7dhlg7n3"
-
-[sub_resource type="Resource" id="Resource_jtcbb"]
-script = ExtResource("11_df41j")
-metadata/_custom_type_script = "uid://b6mw2ys38apry"
-
 [node name="Main Scene" type="Node2D" unique_id=1483603412 node_paths=PackedStringArray("FogArea2", "Area1Tracker")]
 script = ExtResource("1_brv2t")
 FogArea2 = NodePath("LockedAreas/Area2Fog")
@@ -81,13 +73,6 @@ MaxHP = 100
 AiProfile = SubResource("Resource_p61ap")
 TargetingProfile = SubResource("Resource_df41j")
 SpeedBonusProfile = SubResource("Resource_84bhp")
-
-[node name="Enemy2" parent="EnemyGroups/Area1" unique_id=482209834 instance=ExtResource("3_3ulyp")]
-position = Vector2(438, 74)
-MaxHP = 100
-AiProfile = SubResource("Resource_p61ap")
-TargetingProfile = SubResource("Resource_6u8e5")
-SpeedBonusProfile = SubResource("Resource_jtcbb")
 
 [node name="BattleHUD" parent="." unique_id=682286073 groups=["HUD"] instance=ExtResource("5_43vid")]
 layer = 2

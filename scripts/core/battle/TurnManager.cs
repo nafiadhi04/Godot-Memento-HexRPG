@@ -17,7 +17,7 @@ namespace MementoTest.Core
 		private BattleHUD _battleHUD;
 
 		// Referensi ke Player untuk cek jarak (Opsional tapi disarankan)
-		private Node2D _playerNode;
+		private PlayerController _player;
 
 		public override void _Ready()
 		{
@@ -31,7 +31,9 @@ namespace MementoTest.Core
 			// Cari Player (Pastikan Player ada di Group "Player" atau cari manual)
 			// Ini berguna agar musuh yang jauh tidak ikut menyerang
 			var players = GetTree().GetNodesInGroup("Player");
-			if (players.Count > 0) _playerNode = players[0] as Node2D;
+			if (players.Count > 0)
+				_player = players[0] as PlayerController;
+
 
 			CallDeferred(MethodName.StartPlayerTurn);
 		}
@@ -45,6 +47,11 @@ namespace MementoTest.Core
 				_battleHUD.SetEndTurnButtonInteractable(true);
 				_battleHUD.UpdateTurnLabel("PLAYER PHASE");
 			}
+
+			_battleHUD.EnterPlayerCommandPhase(
+	_player.GetAvailableSkillCommands()
+);
+
 
 			EmitSignal(SignalName.PlayerTurnStarted);
 		}
@@ -82,9 +89,9 @@ namespace MementoTest.Core
 					// [LOGIKA JARAK] 
 					// Cek jarak ke player. Jika terlalu jauh (> 800 pixel), skip giliran ini.
 					// Ini mencegah Boss di Area 5 menyerang saat kamu masih di Area 1.
-					if (_playerNode != null)
+					if (_player != null)
 					{
-						float dist = enemy.GlobalPosition.DistanceTo(_playerNode.GlobalPosition);
+						float dist = enemy.GlobalPosition.DistanceTo(_player.GlobalPosition);
 						if (dist > 800) // Angka 800 bisa disesuaikan dengan ukuran layar/area
 						{
 							continue; // Skip musuh ini, lanjut ke musuh berikutnya
@@ -108,6 +115,8 @@ namespace MementoTest.Core
 				// Jeda sebentar biar tidak terlalu cepat pindah phase
 				await ToSignal(GetTree().CreateTimer(0.5f), "timeout");
 			}
+
+			_battleHUD.ExitPlayerCommandPhase();
 
 			// 3. Kembalikan giliran ke Player
 			StartPlayerTurn();

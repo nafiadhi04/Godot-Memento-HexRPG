@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using MementoTest.UI;
 using MementoTest.Core;
 using MementoTest.Resources;
+using System.Linq;
 
 namespace MementoTest.Entities
 {
@@ -110,7 +111,18 @@ namespace MementoTest.Entities
 				CheckEnemyClick();
 			}
 		}
+		public IEnumerable<PlayerSkill> GetAvailableSkills()
+		{
 
+			return SkillList;
+		}
+
+		public IEnumerable<string> GetAvailableSkillCommands()
+		{
+			return SkillList
+				.Where(skill => skill != null)
+				.Select(skill => skill.CommandName.ToLower());
+		}
 		private void CheckEnemyClick()
 		{
 			Vector2 mousePos = GetGlobalMousePosition();
@@ -368,7 +380,6 @@ namespace MementoTest.Entities
 			var popup = DamagePopupScene.Instantiate<DamagePopup>();
 			AddChild(popup);
 
-			// Player kena damage → MERAH
 			popup.SetupAndAnimate(
 				amount,
 				GlobalPosition + new Vector2(0, -30),
