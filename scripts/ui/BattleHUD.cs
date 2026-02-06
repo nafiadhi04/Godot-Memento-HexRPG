@@ -11,6 +11,9 @@ namespace MementoTest.UI
 		[Signal] public delegate void CommandSubmittedEventHandler(string commandText);
 		[Signal] public delegate void EndTurnRequestedEventHandler();
 		// (Signal ReactionEnded dihapus karena kita ganti pakai Task yang lebih canggih)
+		[Signal]
+		public delegate void ReactionSuccessEventHandler();
+
 
 		[Export] public Label ScoreLabel;
 		[Export] public Label ComboLabel;
@@ -47,6 +50,10 @@ namespace MementoTest.UI
 		private double _reactionStartTime;
 		public float LastReactionTime { get; private set; }
 
+		private string _expectedWord = "";
+		private bool _reactionActive = false;
+
+
 
 		public override void _Ready()
 		{
@@ -61,6 +68,8 @@ namespace MementoTest.UI
 			if (PlayerHPBar != null) PlayerHPBar.Value = PlayerHPBar.MaxValue;
 			if (PlayerAPBar != null) PlayerAPBar.Value = PlayerAPBar.MaxValue;
 			CallDeferred("ConnectToScoreManager");
+			_commandInput.TextChanged += OnCommandInputTextChanged;
+
 		}
 		private void ConnectToScoreManager()
 		{
@@ -145,12 +154,8 @@ namespace MementoTest.UI
 		public async Task<bool> WaitForPlayerReaction(string expectedWord, float timeLimit)
 		{
 			// =============================
-			// 1. RESET STATE TOTAL
+			// 1. CANCEL PREVIOUS REACTION (SAFE)
 			// =============================
-			_isReactionPhase = true;
-			_expectedReactionWord = expectedWord.ToLower();
-
-			// Cancel task lama (jaga-jaga)
 			if (_reactionTaskSource != null && !_reactionTaskSource.Task.IsCompleted)
 			{
 				_reactionTaskSource.TrySetResult(false);
@@ -158,12 +163,18 @@ namespace MementoTest.UI
 
 			_reactionTaskSource = new TaskCompletionSource<bool>();
 
-			// Kill timer tween lama
 			if (_timerTween != null && _timerTween.IsValid())
 				_timerTween.Kill();
 
 			// =============================
-			// 2. SETUP UI
+			// 2. INIT STATE
+			// =============================
+			_isReactionPhase = true;
+			_expectedReactionWord = expectedWord.ToLower();
+			_reactionStartTime = Time.GetUnixTimeFromSystem();
+
+			// =============================
+			// 3. SETUP UI
 			// =============================
 			ShowCombatPanel(true);
 
@@ -195,21 +206,25 @@ namespace MementoTest.UI
 
 				_timerTween.TweenCallback(Callable.From(() =>
 				{
-					GD.Print("[HUD] REACTION TIMEOUT");
-					FailReaction("TIMEOUT");
+					if (_reactionTaskSource != null && !_reactionTaskSource.Task.IsCompleted)
+					{
+						GD.Print("[HUD] REACTION TIMEOUT");
+						FailReaction("TIMEOUT");
+					}
 				}));
 			}
 
 			// =============================
-			// 3. FORCE INPUT READY
+			// 4. INPUT PREPARATION (FOCUS SAFE)
 			// =============================
 			if (_commandInput != null)
 			{
 				_commandInput.Visible = true;
 				_commandInput.Editable = true;
 				_commandInput.Clear();
+				_commandInput.Modulate = Colors.White;
 
-				// PENTING: tunggu 1 frame agar UI siap
+				// tunggu 1 frame agar UI siap sepenuhnya
 				await ToSignal(GetTree(), "process_frame");
 
 				_commandInput.GrabFocus();
@@ -218,16 +233,13 @@ namespace MementoTest.UI
 
 			GD.Print($"[HUD] WAITING INPUT: '{expectedWord}'");
 
-			_reactionStartTime = Time.GetUnixTimeFromSystem();
-
-
 			// =============================
-			// 4. WAIT RESULT
+			// 5. WAIT RESULT
 			// =============================
 			bool result = await _reactionTaskSource.Task;
 
 			// =============================
-			// 5. CLEANUP (WAJIB)
+			// 6. CLEANUP (FINAL & CONSISTENT)
 			// =============================
 			_isReactionPhase = false;
 
@@ -240,7 +252,13 @@ namespace MementoTest.UI
 			if (_commandInput != null)
 			{
 				_commandInput.Clear();
+				_commandInput.Modulate = Colors.White;
 				_commandInput.ReleaseFocus();
+			}
+
+			if (result)
+			{
+				EmitSignal(SignalName.ReactionSuccess);
 			}
 
 			return result;
@@ -254,37 +272,79 @@ namespace MementoTest.UI
 			double now = Time.GetUnixTimeFromSystem();
 			LastReactionTime = (float)(now - _reactionStartTime);
 
-			// Skenario 1: Fase Reaksi (Dodge/Parry)
+			// =============================
+			// REACTION PHASE (parry / dodge)
+			// =============================
 			if (_isReactionPhase)
 			{
 				if (cleanText == _expectedReactionWord)
 				{
 					LogToTerminal(">>> PERFECT DEFENSE!", Colors.Cyan);
-					_reactionTaskSource.TrySetResult(true); // Kirim SUKSES ke Musuh
+					_reactionTaskSource?.TrySetResult(true);
 				}
 				else
 				{
 					FailReaction("TYPO");
 				}
 
-				if (_commandInput != null) _commandInput.Clear();
-				return; // Stop, jangan proses sebagai command attack
+				_commandInput.Clear();
+				return;
 			}
 
-			// Skenario 2: Giliran Player Normal
+			// =============================
+			// NORMAL PLAYER COMMAND
+			// =============================
 			EmitSignal(SignalName.CommandSubmitted, cleanText);
-			if (_commandInput != null) _commandInput.Clear();
+			_commandInput.Clear();
 		}
+
+
+		private void OnCommandInputTextChanged(string newText)
+		{
+			if (!_isReactionPhase) return;
+
+			if (string.IsNullOrEmpty(newText))
+			{
+				_commandInput.Modulate = Colors.White;
+				return;
+			}
+
+			string expected = _expectedReactionWord;
+
+			for (int i = 0; i < newText.Length; i++)
+			{
+				if (i >= expected.Length || newText[i] != expected[i])
+				{
+					_commandInput.Modulate = Colors.IndianRed;
+					return;
+				}
+			}
+
+			// sejauh ini benar
+			_commandInput.Modulate = Colors.LimeGreen;
+		}
+
 
 		private void FailReaction(string reason)
 		{
-			if (_isReactionPhase)
+			if (!_isReactionPhase) return;
+
+			GD.Print($"[HUD] REACTION FAILED: {reason}");
+
+			_isReactionPhase = false;
+
+			if (_reactionTaskSource != null && !_reactionTaskSource.Task.IsCompleted)
 			{
-				GD.Print($"[HUD] FAILED: {reason}");
-				_reactionTaskSource.TrySetResult(false); // Kirim GAGAL ke Musuh
-				_isReactionPhase = false;
+				_reactionTaskSource.TrySetResult(false);
 			}
+
+			if (ReactionPromptLabel != null)
+				ReactionPromptLabel.Text = "FAILED!";
+
+			if (_commandInput != null)
+				_commandInput.Modulate = Colors.IndianRed;
 		}
+
 
 		// --- Helper Methods ---
 		public void ShowCombatPanel(bool show)
