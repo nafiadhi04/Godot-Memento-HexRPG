@@ -22,6 +22,9 @@ namespace MementoTest.Entities
 		[Export] public Godot.Collections.Array<PlayerSkill> SkillList;
 		[Export] public PackedScene DamagePopupScene;
 
+		[Export] public AnimatedSprite2D Sprite;
+
+
 		// State Variables
 		private int _currentHP;
 		public int CurrentHP => _currentHP;
@@ -82,6 +85,18 @@ namespace MementoTest.Entities
 			CallDeferred(nameof(SnapToNearestGrid));
 		}
 
+		public override void _Process(double delta)
+		{
+			if (_isMoving) return;
+
+			Vector2 dir = (GetGlobalMousePosition() - GlobalPosition).Normalized();
+			string suffix = GetDirectionSuffix(dir);
+
+			string anim = $"idle_{suffix}";
+			if (Sprite.Animation != anim)
+				Sprite.Play(anim);
+		}
+
 		private void SnapToNearestGrid()
 		{
 			if (MapManager.Instance == null) return;
@@ -123,6 +138,28 @@ namespace MementoTest.Entities
 				.Where(skill => skill != null)
 				.Select(skill => skill.CommandName.ToLower());
 		}
+
+		private string GetDirectionSuffix(Vector2 dir)
+		{
+			if (dir.Y < -0.5f)
+			{
+				if (dir.X < -0.5f) return "up_left";
+				if (dir.X > 0.5f) return "up_right";
+				return "up";
+			}
+			else if (dir.Y > 0.5f)
+			{
+				if (dir.X < -0.5f) return "down_left";
+				if (dir.X > 0.5f) return "down_right";
+				return "down";
+			}
+			else
+			{
+				if (dir.X < 0) return "left";
+				return "right";
+			}
+		}
+
 		private void CheckEnemyClick()
 		{
 			Vector2 mousePos = GetGlobalMousePosition();
@@ -189,15 +226,15 @@ namespace MementoTest.Entities
 
 		private async Task MoveToGrid(Vector2I targetGrid)
 		{
+			if (_isMoving) return;
 			_isMoving = true;
 
-			// --- [SALAH / PENYEBAB BUG] ---
-			// Vector2 targetWorldPos = _mapManager.MapToLocal(targetGrid); 
-			// ^^^ Ini mengembalikan posisi relatif terhadap TileMap, bukan posisi Dunia.
-
-			// --- [BENAR / SOLUSI] ---
-			// Gunakan fungsi yang sama persis dengan yang kita pakai saat Snapping awal (_Ready)
 			Vector2 targetWorldPos = MapManager.Instance.GridToWorld(targetGrid);
+			Vector2 dir = (targetWorldPos - GlobalPosition).Normalized();
+
+
+			string suffix = GetDirectionSuffix(dir);
+			Sprite.Play($"walk_{suffix}");
 
 			// Setup Tween
 			if (_activeTween != null && _activeTween.IsValid()) _activeTween.Kill();
@@ -210,6 +247,8 @@ namespace MementoTest.Entities
 						.SetEase(Tween.EaseType.Out);
 
 			await ToSignal(_activeTween, "finished");
+			Sprite.Play($"idle_{suffix}");
+			_isMoving = false;
 
 			_currentGridPos = targetGrid;
 			_isMoving = false;
@@ -327,7 +366,7 @@ namespace MementoTest.Entities
 		}
 
 		// --- TURN & STATUS ---
-		
+
 		private void OnPlayerTurnStart()
 		{
 			_currentAP = Math.Min(_currentAP + TurnStartBaseRegen, MaxAP);
@@ -364,7 +403,7 @@ namespace MementoTest.Entities
 			// Efek Merah
 			Modulate = Colors.Red;
 			CreateTween().TweenProperty(this, "modulate", Colors.White, 0.3f);
-			
+
 			if (damage > 0)
 			{
 				ScoreManager.Instance.ResetCombo();
@@ -393,5 +432,9 @@ namespace MementoTest.Entities
 			SetPhysicsProcess(false);
 			SetProcessInput(false); // Matikan input
 		}
+
+		
 	}
+	
+	
 }

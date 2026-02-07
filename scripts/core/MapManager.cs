@@ -49,7 +49,7 @@ namespace MementoTest.Core
 		{
 			// Membuat node Line2D secara coding (tanpa perlu add node di Scene)
 			_highlightCursor = new Line2D();
-			_highlightCursor.Width = 2.0f;           // Ketebalan garis
+			_highlightCursor.Width = 3.5f;           // Ketebalan garis
 			_highlightCursor.DefaultColor = new Color(1, 1, 0, 0.7f); // Warna Kuning Transparan
 			_highlightCursor.Closed = true;          // Agar garis nyambung jadi lingkaran/hex
 			_highlightCursor.ZIndex = 5;             // Pastikan di atas player/tanah
